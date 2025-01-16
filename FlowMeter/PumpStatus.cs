@@ -10,21 +10,25 @@ namespace FlowMeter
     public class PumpStatus
     {
         [Flags]
+        private enum CoilFlags : ushort
+        {
+            None = 0,
+            PumpEnabled = 1 << 0,         
+            RemoteControl = 1 << 1,       
+            SafetyMode = 1 << 2,          
+        }
+
+        [Flags]
         private enum DiscreteFlags : ushort
         {
             None = 0,
-            PumpRunning = 1 << 0,         // 0b0000_0001
-            DryRunProtection = 1 << 1,    // 0b0000_0010
-            OverheatAlarm = 1 << 2,       // 0b0000_0100
-            LeakDetected = 1 << 3,        // 0b0000_1000
-            CalibrationMode = 1 << 4,     // 0b0001_0000
-            RemoteControlEnabled = 1 << 5, // 0b0010_0000
-            MaintenanceRequired = 1 << 6, // 0b0100_0000
-            SafetyModeEnabled = 1 << 7,   // 0b1000_0000
-            AutoStartEnabled = 1 << 8,    // 0b1_0000_0000
-            PressureAlarm = 1 << 9        // 0b10_0000_0000
+            PumpRunning = 1 << 0,         
+            OverheatAlarm = 1 << 3,       
+            LeakDetected = 1 << 4,        
+            PressureAlarm = 1 << 5        
         }
         private DiscreteFlags _flags = DiscreteFlags.None;
+        private CoilFlags _coils = CoilFlags.None;
 
         private Dictionary<ushort, short> inputRegisters = new Dictionary<ushort, short>();
 
@@ -32,6 +36,7 @@ namespace FlowMeter
         private const ushort _pressure = 0x02;
         private const ushort _temperature = 0x03;
         private const ushort _runtime = 0x04;
+        private const ushort _rpm = 0x05;
 
         public short FlowRate
         {
@@ -67,16 +72,28 @@ namespace FlowMeter
             inputRegisters[registerIndex] = value;
         }
         
-        public bool IsRunning
+
+        public bool PumpEnabled
         {
-            get => _flags.HasFlag(DiscreteFlags.PumpRunning);
-            set => _flags = value ? _flags | DiscreteFlags.PumpRunning : _flags & ~DiscreteFlags.PumpRunning;
+            get => _coils.HasFlag(CoilFlags.PumpEnabled);
+            set => _coils = value ? _coils | CoilFlags.PumpEnabled : _coils & ~CoilFlags.PumpEnabled;
         }
 
-        public bool DryRunProtection
+        public bool RemoteControl
         {
-            get => _flags.HasFlag(DiscreteFlags.DryRunProtection);
-            set => _flags = value ? _flags | DiscreteFlags.DryRunProtection : _flags & ~DiscreteFlags.DryRunProtection;
+            get => _coils.HasFlag(CoilFlags.RemoteControl);
+            set => _coils = value ? _coils | CoilFlags.RemoteControl : _coils & ~CoilFlags.RemoteControl;
+        }
+
+        public bool SafetyMode
+        {
+            get => _coils.HasFlag(CoilFlags.SafetyMode);
+            set => _coils = value ? _coils | CoilFlags.SafetyMode : _coils & ~CoilFlags.SafetyMode;
+        }
+
+        public bool IsRunning
+        {
+            get => RPM > 0;
         }
 
         public bool OverheatAlarm
@@ -91,40 +108,14 @@ namespace FlowMeter
             set => _flags = value ? _flags | DiscreteFlags.LeakDetected : _flags & ~DiscreteFlags.LeakDetected;
         }
 
-        public bool CalibrationMode
-        {
-            get => _flags.HasFlag(DiscreteFlags.CalibrationMode);
-            set => _flags = value ? _flags | DiscreteFlags.CalibrationMode : _flags & ~DiscreteFlags.CalibrationMode;
-        }
-
-        public bool RemoteControlEnabled
-        {
-            get => _flags.HasFlag(DiscreteFlags.RemoteControlEnabled);
-            set => _flags = value ? _flags | DiscreteFlags.RemoteControlEnabled : _flags & ~DiscreteFlags.RemoteControlEnabled;
-        }
-
-        public bool MaintenanceRequired
-        {
-            get => _flags.HasFlag(DiscreteFlags.MaintenanceRequired);
-            set => _flags = value ? _flags | DiscreteFlags.MaintenanceRequired : _flags & ~DiscreteFlags.MaintenanceRequired;
-        }
-
-        public bool SafetyModeEnabled
-        {
-            get => _flags.HasFlag(DiscreteFlags.SafetyModeEnabled);
-            set => _flags = value ? _flags | DiscreteFlags.SafetyModeEnabled : _flags & ~DiscreteFlags.SafetyModeEnabled;
-        }
-
-        public bool AutoStartEnabled
-        {
-            get => _flags.HasFlag(DiscreteFlags.AutoStartEnabled);
-            set => _flags = value ? _flags | DiscreteFlags.AutoStartEnabled : _flags & ~DiscreteFlags.AutoStartEnabled;
-        }
-
         public bool PressureAlarm
         {
             get => _flags.HasFlag(DiscreteFlags.PressureAlarm);
             set => _flags = value ? _flags | DiscreteFlags.PressureAlarm : _flags & ~DiscreteFlags.PressureAlarm;
+        }
+        public short RPM {
+            get => GetInputRegister(_rpm);
+            set => SetInputRegister(_rpm, value);
         }
 
         public ushort ToUShort()
@@ -146,6 +137,8 @@ namespace FlowMeter
             // return masked value
             return (ushort)(status & mask);
         }
+
+        
 
         public List<string> GetActiveDiscreteFlags()
         {
@@ -199,6 +192,52 @@ namespace FlowMeter
                     registers[i] = 0;
             }
             return registers;
+        }
+
+        public ushort ReadCoils(int startRegister, int count)
+        {
+            // Get temporary variable
+            ushort status = (ushort)_coils;
+
+            // Shift to correct position
+            status >>= startRegister;
+
+            // Mask excess bits
+            ushort mask = (ushort)((1 << count) - 1);
+
+            // return masked value
+            return (ushort)(status & mask);
+        }
+
+        public void WriteCoils(int startRegister, int count)
+        {
+            // Get temporary variable
+            ushort status = (ushort)_coils;
+            // Shift to correct position
+            status <<= startRegister;
+            // Mask excess bits
+            ushort mask = (ushort)((1 << count) - 1);
+            // return masked value
+            _coils = (CoilFlags)(status & mask);
+        }
+
+        public void SetCoil(ushort registerIndex, ushort registerValue)
+        {
+            ushort mask = (ushort)(1 << registerIndex);
+            if (registerValue == 0)
+            {
+                _coils &= (CoilFlags)~mask;
+            }
+            else
+            {
+                _coils |= (CoilFlags)mask;
+            }
+        }
+
+        public ushort GetCoil(ushort registerIndex)
+        {
+            ushort mask = (ushort)(1 << registerIndex);
+            return (ushort)(_coils & (CoilFlags)mask);
         }
     }
 }
