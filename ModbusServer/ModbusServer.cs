@@ -40,11 +40,18 @@ namespace ModbusServer
             {
                 try
                 {
-                    var client = _listener.AcceptTcpClient();
-                    // Display the remote party ip addresss
-                    var RemoteEndpoint = client.Client.RemoteEndPoint as IPEndPoint;
-                    Console.WriteLine($"New connection from {RemoteEndpoint?.Address.ToString()}");
-                    new Thread(() => HandleClient(client)).Start();
+                    if (_listener.Pending())
+                    {
+                        var client = _listener.AcceptTcpClient();
+                        // Display the remote party IP address
+                        var remoteEndpoint = client.Client.RemoteEndPoint as IPEndPoint;
+                        Console.WriteLine($"New connection from {remoteEndpoint?.Address.ToString()}");
+                        new Thread(() => HandleClient(client)).Start();
+                    }
+                    else
+                    {
+                        Thread.Sleep(100); // Add a small delay to reduce CPU usage
+                    }
                 }
                 catch (Exception e)
                 {
