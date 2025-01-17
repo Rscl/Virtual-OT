@@ -67,13 +67,20 @@ namespace ModbusServer
             {
                 while (_isRunning)
                 {
-                    byte[] buffer = new byte[256];
-                    int bytesRead = networkStream.Read(buffer, 0, buffer.Length);
-                    if (bytesRead > 0)
+                    if (networkStream.DataAvailable)
                     {
-                        byte[] data = buffer.Take(bytesRead).ToArray();
-                        ModbusPacket request = ModbusPacket.FromByteArray(data);
-                        PacketReceived?.Invoke(request, networkStream);
+                        byte[] buffer = new byte[256];
+                        int bytesRead = networkStream.Read(buffer, 0, buffer.Length);
+                        if (bytesRead > 0)
+                        {
+                            byte[] data = buffer.Take(bytesRead).ToArray();
+                            ModbusPacket request = ModbusPacket.FromByteArray(data);
+                            PacketReceived?.Invoke(request, networkStream);
+                        }
+                    }
+                    else
+                    {
+                        Thread.Sleep(100); // Add a small delay to reduce CPU usage
                     }
                 }
             }
