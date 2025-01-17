@@ -118,9 +118,9 @@ namespace FlowMeter
             {
                 _pumpStatus.Pressure = 0;
             }
-            else if (_pumpStatus.Pressure > 7)
+            else if (_pumpStatus.Pressure > 70)
             {
-                _pumpStatus.Pressure = 7;
+                _pumpStatus.Pressure = 70;
             }
 
             // Simulate temperature increase
