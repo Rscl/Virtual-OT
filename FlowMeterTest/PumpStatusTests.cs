@@ -103,13 +103,20 @@ public class PumpStatusTests
         Assert.IsFalse(_pumpStatus.PressureAlarm);
     }
 
-    [Test]
-    public void TestReadDiscreteInputs()
+    [Theory]
+    [TestCase(PumpStatus.DiscreteFlags.PumpRunning, (ushort)1, (ushort)1, (ushort)1)]
+    [TestCase(PumpStatus.DiscreteFlags.PumpRunning | PumpStatus.DiscreteFlags.OverheatAlarm, (ushort)1, (ushort)1, (ushort)1)]
+    [TestCase(PumpStatus.DiscreteFlags.PumpRunning | PumpStatus.DiscreteFlags.OverheatAlarm | PumpStatus.DiscreteFlags.LeakDetected, (ushort)1, (ushort)1, (ushort)1)]
+    [TestCase(PumpStatus.DiscreteFlags.PumpRunning | PumpStatus.DiscreteFlags.OverheatAlarm | PumpStatus.DiscreteFlags.LeakDetected | PumpStatus.DiscreteFlags.PressureAlarm, (ushort)1, (ushort)1, (ushort)1)]
+    [TestCase(PumpStatus.DiscreteFlags.LeakDetected | PumpStatus.DiscreteFlags.OverheatAlarm, (ushort)1, (ushort)1, (ushort)0)]
+    [TestCase(PumpStatus.DiscreteFlags.PumpRunning | PumpStatus.DiscreteFlags.OverheatAlarm, (ushort)2, (ushort)1, (ushort)1)]
+    [TestCase(PumpStatus.DiscreteFlags.PumpRunning | PumpStatus.DiscreteFlags.PressureAlarm, (ushort)2, (ushort)1, (ushort)0)]
+    [TestCase(PumpStatus.DiscreteFlags.PumpRunning | PumpStatus.DiscreteFlags.OverheatAlarm, (ushort)1, (ushort)2, (ushort)3)]
+    public void TestReadDiscreteInputs(PumpStatus.DiscreteFlags flags, ushort start, ushort count, ushort expected)
     {
-        _pumpStatus.OverheatAlarm = true;
-        _pumpStatus.LeakDetected = true;
-        ushort result = _pumpStatus.ReadDiscreteInputs(3, 2);
-        Assert.That(result, Is.EqualTo(3)); // 0b11
+        _pumpStatus.Discretes = flags;
+        ushort result = _pumpStatus.ReadDiscreteInputs(start, count);
+        Assert.That(result, Is.EqualTo(expected));
     }
 
     [Test]
@@ -142,45 +149,55 @@ public class PumpStatusTests
         Assert.That(registers[1], Is.EqualTo(5));
     }
 
-    [Test]
-    public void TestReadCoils()
+    [Theory]
+    [TestCase(PumpStatus.CoilFlags.PumpEnabled)]
+    public void TestReadCoils(PumpStatus.CoilFlags flags)
     {
-        _pumpStatus.PumpEnabled = true;
-        _pumpStatus.RemoteControl = true;
-        ushort result = _pumpStatus.ReadCoils(0, 2);
-        Assert.That(result, Is.EqualTo(3)); // 0b11
-    }
-
-    [Test]
-    public void TestWriteCoils()
-    {
-        _pumpStatus.WriteCoils(0, 2);
-        Assert.IsFalse(_pumpStatus.PumpEnabled);
-        Assert.IsFalse(_pumpStatus.RemoteControl);
-    }
-
-    [Test]
-    public void TestSetCoil()
-    {
-        _pumpStatus.SetCoil(0, 1);
-        Assert.IsTrue(_pumpStatus.PumpEnabled);
-        _pumpStatus.SetCoil(0, 0);
-        Assert.IsFalse(_pumpStatus.PumpEnabled);
-        _pumpStatus.SetCoil(1, 1);
-        Assert.IsTrue(_pumpStatus.RemoteControl);
-        _pumpStatus.SetCoil(1, 0);
-        Assert.IsFalse(_pumpStatus.RemoteControl);
+        _pumpStatus.Coils = flags;
+        foreach(PumpStatus.CoilFlags flag in Enum.GetValues(typeof(PumpStatus.CoilFlags)))
+        {
+            bool isFlagSet = _pumpStatus.Coils.HasFlag(flag);
+            if (flags.HasFlag(flag))
+            {
+                Assert.IsTrue(isFlagSet, $"{flag} should be set.");
+            }
+            else
+            {
+                Assert.IsFalse(isFlagSet, $"{flag} should not be set.");
+            }
+        }
     }
 
     [Theory]
-    [TestCase((ushort)0, (ushort)1, (ushort)1)]
-    [TestCase((ushort)1, (ushort)0, (ushort)0)]
-    [TestCase((ushort)2, (ushort)1, (ushort)4)]
-    [TestCase((ushort)1, (ushort)1, (ushort)2)]
-    public void TestGetCoil(ushort registerIndex, ushort registerValue, ushort expected)
+    [TestCase((ushort)1, false, PumpStatus.CoilFlags.PumpEnabled, PumpStatus.CoilFlags.None)]
+    [TestCase((ushort)1, true, PumpStatus.CoilFlags.PumpEnabled, PumpStatus.CoilFlags.PumpEnabled | PumpStatus.CoilFlags.RemoteControl | PumpStatus.CoilFlags.SafetyMode)]
+    [TestCase((ushort)2, false, PumpStatus.CoilFlags.RemoteControl, PumpStatus.CoilFlags.RemoteControl)]
+    [TestCase((ushort)2, true, PumpStatus.CoilFlags.RemoteControl, PumpStatus.CoilFlags.None)]
+    [TestCase((ushort)3, false, PumpStatus.CoilFlags.SafetyMode, PumpStatus.CoilFlags.None)]
+    [TestCase((ushort)3, true, PumpStatus.CoilFlags.SafetyMode, PumpStatus.CoilFlags.None)]
+    public void TestSetCoil(ushort registerIndex, bool value, PumpStatus.CoilFlags flag, PumpStatus.CoilFlags initialFlags)
     {
-        _pumpStatus.SetCoil(registerIndex, registerValue);
-        ushort result = _pumpStatus.GetCoil(registerIndex);
-        Assert.That(result, Is.EqualTo(expected));
+        _pumpStatus.Coils = initialFlags;
+        _pumpStatus.SetCoil(registerIndex, value);
+        if(value)
+        {
+            Assert.That(_pumpStatus.Coils.HasFlag(flag));
+        }
+        else
+        {
+            Assert.That(!_pumpStatus.Coils.HasFlag(flag));
+        }
+    }
+
+    [Theory]
+    [TestCase((ushort)0, false)]
+    [TestCase((ushort)1, true)]
+    [TestCase((ushort)2, false)]
+    [TestCase((ushort)3, true)]
+    public void TestGetCoil(ushort registerIndex, bool registerValue)
+    {
+        _pumpStatus.Coils = PumpStatus.CoilFlags.PumpEnabled | PumpStatus.CoilFlags.SafetyMode;
+        bool result = _pumpStatus.GetCoil(registerIndex);
+        Assert.That(result, Is.EqualTo(registerValue));
     }
 }

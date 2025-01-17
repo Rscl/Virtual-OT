@@ -7,47 +7,17 @@ namespace FlowMeter
 {
     public static class ModbusFunctions
     {
-        public static void OnPacketReceived(ModbusPacket packet, NetworkStream stream)
-        {
-            Console.WriteLine($"New packet received with function: {packet.FunctionCode} from {(stream.Socket?.RemoteEndPoint as IPEndPoint)?.Address}");
-            switch (packet.FunctionCode)
-            {
-                case 0x01:
-                    HandleUnknown(packet, stream);
-                    break;
-                case 0x02:
-                    HandleF2(packet, stream);
-                    break;
-                case 0x04:
-                    HandleF4(packet, stream);
-                    break;
-                case 0x05:
-                    HandleF5(packet, stream);
-                    break;
-                default:
-                    HandleUnknown(packet, stream);
-                    break;
-            }
-            if (packet.FunctionCode == 0x01)
-            {
-                HandleF2(packet, stream);
-            }
-        }
-
-        private static void HandleUnknown(ModbusPacket packet, NetworkStream stream)
+        public static void HandleError(ModbusPacket packet, NetworkStream stream, byte exceptionCode)
         {
             Console.WriteLine("Unknown function code.");
-
-            // Error code "Illegal Function" (0x01)
-            byte exceptionCode = 0x01;
 
             // Generate error response packet
             ModbusPacket errorResponse = new ModbusPacket(
                 packet.TransactionIdentifier,  // Same Transaction ID
                 packet.ProtocolIdentifier,     // Same Protocol ID
                 packet.UnitIdentifier,         // Same Unit ID
-                (byte)(packet.FunctionCode + 0x80), // Illegal function code (original + 0x80)
-                new byte[] { exceptionCode }   // Error code (0x01 - "Illegal Function")
+                (byte)(packet.FunctionCode + 0x80), // Error type (original function code + 0x80)
+                new byte[] { exceptionCode }   // Error code)
             );
 
             // Generate byte array
@@ -56,7 +26,7 @@ namespace FlowMeter
             stream.Write(responseBytes, 0, responseBytes.Length);
         }
 
-        private static void HandleF4(ModbusPacket packet, NetworkStream stream)
+        public static void HandleF4(ModbusPacket packet, NetworkStream stream)
         {
             var (registerIndex, registerCount) = ModbusServer.Utils.ModbusFunctions.ReadInputData(packet.Data);
             // Lue rekisterit pumpustatuksesta
@@ -94,7 +64,22 @@ namespace FlowMeter
             stream.Write(responseBytes, 0, responseBytes.Length);
         }
 
-        private static void HandleF2(ModbusPacket packet, NetworkStream stream)
+        public static void HandleF1(ModbusPacket packet, NetworkStream stream)
+        {
+            var (registerIndex, registerCount) = ModbusServer.Utils.ModbusFunctions.ReadInputData(packet.Data);
+            var returnData = Program.PumpStatus.ReadCoils(registerIndex, registerCount);
+
+            ModbusPacket response = new ModbusPacket(
+            packet.TransactionIdentifier,
+            packet.ProtocolIdentifier,
+            packet.UnitIdentifier,
+            packet.FunctionCode,
+            ModbusServer.Utils.ToBigendian.From(returnData)
+            );
+            byte[] responseBytes = response.ToByteArray();
+            stream.Write(responseBytes, 0, responseBytes.Length);
+        }
+        public static void HandleF2(ModbusPacket packet, NetworkStream stream)
         {
             var (registerIndex, registerCount) = ModbusServer.Utils.ModbusFunctions.ReadInputData(packet.Data);
             var returnData = Program.PumpStatus.ReadDiscreteInputs(registerIndex, registerCount);
@@ -110,18 +95,44 @@ namespace FlowMeter
             stream.Write(responseBytes, 0, responseBytes.Length);
         }
 
-        private static void HandleF5(ModbusPacket packet, NetworkStream stream)
+
+        /// <summary>
+        /// F5 function in modbus set's one coil value. Data structure is 
+        /// Bigendian encoded ushort coil address
+        /// Bigendian encoded ushort / short value. FF00 = On, 0000 = Off. Other values are invalid and are ignored.
+        /// 
+        /// Response packet returns data as 
+        /// Bigendian encoded ushort coil address
+        /// Bigendian encoded ushort / short value (FF00 or 0000).
+        /// OR
+        /// Error code packet
+        /// </summary>
+        /// <param name="packet">Received modbus packet.</param>
+        /// <param name="stream">Stream where to send response packet.</param>
+        public static void HandleF5(ModbusPacket packet, NetworkStream stream)
         {
             var (registerIndex, registerValue) = ModbusServer.Utils.ModbusFunctions.ReadInputData(packet.Data);
-            Program.PumpStatus.SetCoil(registerIndex, registerValue);
+            bool bit;
+            if (registerValue == 0)
+            {
+                bit = false;
+            }
+            else
+                bit = true;
+            Program.PumpStatus.SetCoil(registerIndex, bit);
             //Program._pumpStatus.SetInputRegister(registerIndex, (short)registerValue);
-            var returnData = Program.PumpStatus.ReadDiscreteInputs(registerIndex, registerValue);
+            var returnBit = Program.PumpStatus.GetCoil(registerIndex);
+            byte[] returnData = new byte[2];
+            if (returnBit)
+                returnData = new byte[] { 0xFF, 0x00 };
+            else
+                returnData = new byte[] { 0x00, 0x00 };
             ModbusPacket response = new ModbusPacket(
             packet.TransactionIdentifier,
             packet.ProtocolIdentifier,
             packet.UnitIdentifier,
             packet.FunctionCode,
-            ModbusServer.Utils.ToBigendian.From(returnData)
+            returnData
             );
             byte[] responseBytes = response.ToByteArray();
             stream.Write(responseBytes, 0, responseBytes.Length);

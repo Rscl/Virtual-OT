@@ -48,6 +48,11 @@ namespace FlowMeter
             Console.WriteLine("Server started...");
             while (_isRunning)
             {
+                if (PumpStatus.RemoteControl == false)
+                {
+                    
+                    server.Stop();
+                }
                 UpdatePumpStatus();
                 Thread.Sleep(1000);
             }
@@ -58,6 +63,22 @@ namespace FlowMeter
 
         private static void UpdatePumpStatus()
         {
+            if (PumpStatus.PumpEnabled == false)
+            {
+                PumpStatus.FlowRate = 0;
+                PumpStatus.Pressure = 0;
+                PumpStatus.RPM = 0;
+                PumpStatus.Runtime = 0;
+                // Simulate alarms
+                // Overheat alarm is triggered if temperature is over 70 degrees
+                _pumpStatus.OverheatAlarm = _pumpStatus.Temperature > 70;
+                // Pressure alarm is triggered if pressure is over 5
+                _pumpStatus.PressureAlarm = _pumpStatus.Pressure > 5;
+                // Leak is detected if flowrate is over 500
+                _pumpStatus.LeakDetected = _pumpStatus.FlowRate > 500;
+                return;
+
+            }
             // Simulate water consumption
             // Water consumption should fluctuate between 50 and 400 liters per minute, based on previous values
             int deltaConsumption = new Random().Next(-25, 25);
@@ -97,9 +118,9 @@ namespace FlowMeter
             {
                 _pumpStatus.Pressure = 0;
             }
-            else if (_pumpStatus.Pressure > 70)
+            else if (_pumpStatus.Pressure > 7)
             {
-                _pumpStatus.Pressure = 70;
+                _pumpStatus.Pressure = 7;
             }
 
             // Simulate temperature increase
@@ -129,19 +150,22 @@ namespace FlowMeter
         public static void OnPacketReceived(ModbusPacket packet, NetworkStream stream)
         {
             Console.WriteLine($"New packet received with function: {packet.FunctionCode} from {(stream.Socket?.RemoteEndPoint as IPEndPoint)?.Address}");
-            switch(packet.FunctionCode)
+            switch (packet.FunctionCode)
             {
                 case 0x01:
-                    HandleUnknown(packet, stream);
+                    ModbusFunctions.HandleF1(packet, stream);
                     break;
                 case 0x02:
-                    HandleF2(packet, stream);
+                    ModbusFunctions.HandleF2(packet, stream);
                     break;
                 case 0x04:
-                    HandleF4(packet, stream);
+                    ModbusFunctions.HandleF4(packet, stream);
+                    break;
+                case 0x05:
+                    ModbusFunctions.HandleF5(packet, stream);
                     break;
                 default:
-                    HandleUnknown(packet, stream);
+                    ModbusFunctions.HandleError(packet, stream, 1);
                     break;
             }
         }

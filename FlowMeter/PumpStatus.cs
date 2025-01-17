@@ -10,25 +10,35 @@ namespace FlowMeter
     public class PumpStatus
     {
         [Flags]
-        private enum CoilFlags : ushort
+        public enum CoilFlags : ushort
         {
             None = 0,
-            PumpEnabled = 1 << 0,         
-            RemoteControl = 1 << 1,       
-            SafetyMode = 1 << 2,          
+            PumpEnabled = 1 << 1,      
+            RemoteControl = 1 << 2,     
+            SafetyMode = 1 << 3,         
         }
 
         [Flags]
-        private enum DiscreteFlags : ushort
+        public enum DiscreteFlags : ushort
         {
             None = 0,
-            PumpRunning = 1 << 0,         
-            OverheatAlarm = 1 << 3,       
-            LeakDetected = 1 << 4,        
-            PressureAlarm = 1 << 5        
+            PumpRunning = 1 << 1,         
+            OverheatAlarm = 1 << 2,       
+            LeakDetected = 1 << 3,        
+            PressureAlarm = 1 << 4        
         }
         private DiscreteFlags _flags = DiscreteFlags.None;
         private CoilFlags _coils = CoilFlags.None;
+
+        public CoilFlags Coils
+        {
+            get => _coils; set => _coils = value;
+        }
+
+        public DiscreteFlags Discretes
+        {
+            get => _flags; set => _flags = value;
+        }
 
         private Dictionary<ushort, short> inputRegisters = new Dictionary<ushort, short>();
 
@@ -69,6 +79,7 @@ namespace FlowMeter
 
         public void SetInputRegister(ushort registerIndex, short value)
         {
+            //Console.WriteLine($"Input register {registerIndex} set to value: {value}");
             inputRegisters[registerIndex] = value;
         }
         
@@ -116,11 +127,6 @@ namespace FlowMeter
         public short RPM {
             get => GetInputRegister(_rpm);
             set => SetInputRegister(_rpm, value);
-        }
-
-        public ushort ToUShort()
-        {
-            return (ushort)_flags;
         }
 
         public ushort ReadDiscreteInputs(int startRegister, int count)
@@ -209,35 +215,24 @@ namespace FlowMeter
             return (ushort)(status & mask);
         }
 
-        public void WriteCoils(int startRegister, int count)
+        public void SetCoil(ushort registerIndex, bool registerValue)
         {
-            // Get temporary variable
-            ushort status = (ushort)_coils;
-            // Shift to correct position
-            status <<= startRegister;
-            // Mask excess bits
-            ushort mask = (ushort)((1 << count) - 1);
-            // return masked value
-            _coils = (CoilFlags)(status & mask);
-        }
-
-        public void SetCoil(ushort registerIndex, ushort registerValue)
-        {
+            Console.WriteLine($"Setting coil {(CoilFlags)registerIndex} ({registerIndex}) to value: {registerValue}");
             ushort mask = (ushort)(1 << registerIndex);
-            if (registerValue == 0)
+            if (!registerValue)
             {
-                _coils &= (CoilFlags)~mask;
+                _coils &= (CoilFlags)~mask; // Set register OFF
             }
             else
             {
-                _coils |= (CoilFlags)mask;
+                _coils |= (CoilFlags)mask; // Set register ON
             }
         }
 
-        public ushort GetCoil(ushort registerIndex)
+        public bool GetCoil(ushort registerIndex)
         {
             ushort mask = (ushort)(1 << registerIndex);
-            return (ushort)(_coils & (CoilFlags)mask);
+            return _coils.HasFlag((CoilFlags)mask);
         }
     }
 }

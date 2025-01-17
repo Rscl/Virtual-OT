@@ -5,10 +5,10 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <PublishAot>true</PublishAot>
+    <PublishAot>false</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
-	  <DockerfileRunArguments>-p 11502:502</DockerfileRunArguments>
+	  <DockerfileRunArguments>-p 11502:502 --network=kyberlinna-vuoto</DockerfileRunArguments>
 	  <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
 

@@ -9,7 +9,6 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
-      "httpPort": 502,
       "useSSL": false
     }
   }

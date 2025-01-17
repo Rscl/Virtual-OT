@@ -28,19 +28,28 @@ namespace ModbusServer
 
         public void Stop()
         {
-            _listener.Stop();
             _isRunning = false;
+            Thread.Sleep(500);
+            _listener.Stop();
+            
         }
 
         private void Listen()
         {
             while (_isRunning)
             {
-                var client = _listener.AcceptTcpClient();
-                // Display the remote party ip addresss
-                var RemoteEndpoint = client.Client.RemoteEndPoint as IPEndPoint;
-                Console.WriteLine($"New connection from {RemoteEndpoint?.Address.ToString()}");
-                new Thread(() => HandleClient(client)).Start();
+                try
+                {
+                    var client = _listener.AcceptTcpClient();
+                    // Display the remote party ip addresss
+                    var RemoteEndpoint = client.Client.RemoteEndPoint as IPEndPoint;
+                    Console.WriteLine($"New connection from {RemoteEndpoint?.Address.ToString()}");
+                    new Thread(() => HandleClient(client)).Start();
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.Message);
+                }
             }
         }
 
